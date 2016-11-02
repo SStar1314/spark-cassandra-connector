@@ -153,7 +153,17 @@ object CassandraConnector extends Logging {
   private def createSession(conf: CassandraConnectorConf): Session = {
     lazy val endpointsStr = conf.hosts.map(_.getHostAddress).mkString("{", ", ", "}") + ":" + conf.port
     logDebug(s"Attempting to open native connection to Cassandra at $endpointsStr")
-    val cluster = clusterCache.getOrElse(conf, conf.connectionFactory.createCluster(conf))
+
+    val cluster = {
+      val clusterFromCache = clusterCache.getOrElse(conf, conf.connectionFactory.createCluster(conf))
+      if (clusterFromCache.isClosed()) {
+        val newClusterInstance = conf.connectionFactory.createCluster(conf)
+        clusterCache.put(conf, newClusterInstance)
+        newClusterInstance
+      } else {
+        clusterFromCache
+      }
+    }
     clusterCache.putIfAbsent(conf, cluster)
     try {
       val clusterName = cluster.getMetadata.getClusterName
