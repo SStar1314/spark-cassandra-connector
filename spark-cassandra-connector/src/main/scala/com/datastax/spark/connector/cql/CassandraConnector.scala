@@ -5,6 +5,8 @@ import java.net.InetAddress
 
 import scala.collection.JavaConversions._
 import scala.language.reflectiveCalls
+import scala.collection.mutable.LinkedHashMap
+import scala.collection.mutable.SynchronizedMap
 import org.apache.spark.SparkConf
 import com.datastax.driver.core.{Cluster, Host, Session}
 import com.datastax.spark.connector.cql.CassandraConnectorConf.CassandraSSLConf
@@ -148,7 +150,7 @@ object CassandraConnector extends Logging {
   private[cql] val sessionCache = new RefCountedCache[CassandraConnectorConf, Session](
     createSession, destroySession, alternativeConnectionConfigs)
 
-  private[cql] val clusterCache = new TrieMap[CassandraConnectorConf, Cluster]
+  private[cql] val clusterCache = new LinkedHashMap[CassandraConnectorConf, Cluster]() with SynchronizedMap[CassandraConnectorConf, Cluster]
 
   private def createSession(conf: CassandraConnectorConf): Session = {
     lazy val endpointsStr = conf.hosts.map(_.getHostAddress).mkString("{", ", ", "}") + ":" + conf.port
@@ -164,7 +166,7 @@ object CassandraConnector extends Logging {
         clusterFromCache
       }
     }
-    clusterCache.putIfAbsent(conf, cluster)
+
     try {
       val clusterName = cluster.getMetadata.getClusterName
       logInfo(s"Connected to Cassandra cluster: $clusterName")
