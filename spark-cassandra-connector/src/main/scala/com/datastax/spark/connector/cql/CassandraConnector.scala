@@ -5,13 +5,13 @@ import java.net.InetAddress
 
 import scala.collection.JavaConversions._
 import scala.language.reflectiveCalls
-
 import org.apache.spark.SparkConf
-
 import com.datastax.driver.core.{Cluster, Host, Session}
 import com.datastax.spark.connector.cql.CassandraConnectorConf.CassandraSSLConf
 import com.datastax.spark.connector.util.SerialShutdownHooks
 import com.datastax.spark.connector.util.Logging
+
+import scala.collection.concurrent.TrieMap
 
 /** Provides and manages connections to Cassandra.
   *
@@ -148,10 +148,13 @@ object CassandraConnector extends Logging {
   private[cql] val sessionCache = new RefCountedCache[CassandraConnectorConf, Session](
     createSession, destroySession, alternativeConnectionConfigs)
 
+  private[cql] val clusterCache = new TrieMap[CassandraConnectorConf, Cluster]
+
   private def createSession(conf: CassandraConnectorConf): Session = {
     lazy val endpointsStr = conf.hosts.map(_.getHostAddress).mkString("{", ", ", "}") + ":" + conf.port
     logDebug(s"Attempting to open native connection to Cassandra at $endpointsStr")
-    val cluster = conf.connectionFactory.createCluster(conf)
+    val cluster = clusterCache.getOrElse(conf, conf.connectionFactory.createCluster(conf))
+    clusterCache.putIfAbsent(conf, cluster)
     try {
       val clusterName = cluster.getMetadata.getClusterName
       logInfo(s"Connected to Cassandra cluster: $clusterName")
